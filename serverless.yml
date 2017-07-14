@@ -1,0 +1,139 @@
+service: botmatic-assistant
+provider:
+  name: aws
+  profile: default
+  runtime: nodejs6.10
+  stage: ${opt:stage}
+  region: eu-west-2
+  memorySize: 512
+  timeout: 300
+  environment:
+    CONFIG: ${file(./config/${self:provider.stage}/config.json.config)}
+
+functions:
+  api:
+    handler: api.handler
+    events:
+      - http:
+          cors: true
+          method: post
+          path: api
+
+  query:
+    handler: query.handler
+    events:
+      - s3:
+          bucket: documentBucket
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .csv
+      - s3:
+          bucket: documentBucket
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .xlsx
+      - s3:
+          bucket: documentBucket
+          event: s3:ObjectCreated:*
+          rules:
+            - suffix: .xls
+
+resources:
+  Resources:
+    user:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.stage}_user
+        AttributeDefinitions:
+          - AttributeName: email
+            AttributeType: S
+        KeySchema:
+          - AttributeName: email
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    userSession:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.stage}_user_session
+        AttributeDefinitions:
+          - AttributeName: id
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    queryCache:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.stage}_query_cache
+        AttributeDefinitions:
+          - AttributeName: id # sha256'd query
+            AttributeType: S
+        KeySchema:
+          - AttributeName: id
+            KeyType: HASH
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1
+
+    documentBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.stage}_document_bucket
+
+    siteBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: ${self:provider.stage}_site_bucket
+
+plugins:
+  - serverless-dynamodb-local
+  - serverless-dynamodb-ttl
+  - serverless-offline
+  - serverless-s3-deploy
+  - serverless-s3-local
+  - serverless-webpack
+
+custom:
+  assets:
+    auto: true
+    targets:
+      - bucket: ${self:provider.stage}_site_bucket
+        files:
+          - source: ../client/
+            globs: '**/*'
+
+  dynamodb:
+    start:
+      port: 18764
+      inMemory: true
+      migrate: true
+      seed: true
+    ttl:
+      - table: ${self:provider.stage}_user_session
+        field: ttl
+    seed:
+      domain:
+        sources:
+          - table: ${self:provider.stage}_user
+            sources: [./seed/staging/db/user.json]
+
+  s3:
+    port: 52361
+    cors: true
+    directory: ./build/tmp
+    buckets:
+      - ${self:provider.stage}_document_bucket
+
+  serverless-offline:
+    port: 4000
+
+  webpack: ./webpack/config/server.js
+      
+  webpackIncludeModules: true

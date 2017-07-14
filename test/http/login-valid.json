@@ -1,0 +1,3 @@
+{
+  "body": "{\"url\":\"/auth/login\",\"query\":{\"email\":\"ahmed@firestartermedia.com\",\"password\":\"foo\"},\"headers\":{\"cookie\":\"\"}}"
+}
